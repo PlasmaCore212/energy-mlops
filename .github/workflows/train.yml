@@ -38,6 +38,7 @@ jobs:
     
     - name: Install Azure ML SDK
       run: |
+        pip install marshmallow==3.19.0
         pip install azure-ai-ml==1.11.0 azure-identity==1.15.0
     
     - name: Azure Login
