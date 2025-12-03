@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Consumption Prediction</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ Energy Consumption Prediction</h1>
+            <p>Predict household power consumption using machine learning</p>
+        </header>
+
+        <div class="content">
+            <div class="prediction-form">
+                <h2>Make a Prediction</h2>
+                <form id="predictionForm">
+                    <div class="form-group">
+                        <label for="hoursAhead">Hours Ahead (1-168):</label>
+                        <input type="number" id="hoursAhead" min="1" max="168" value="24" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="currentPower">Current Power (kW) - Optional:</label>
+                        <input type="number" id="currentPower" step="0.01" placeholder="Leave empty for default">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="voltage">Voltage (V) - Optional:</label>
+                        <input type="number" id="voltage" step="0.1" value="240" placeholder="240">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="intensity">Intensity (A) - Optional:</label>
+                        <input type="number" id="intensity" step="0.1" value="5" placeholder="5">
+                    </div>
+
+                    <button type="submit" class="btn-predict">Get Prediction</button>
+                </form>
+
+                <div id="status" class="status"></div>
+            </div>
+
+            <div class="results">
+                <h2>Prediction Results</h2>
+                <div id="resultsInfo" class="results-info"></div>
+                <canvas id="predictionChart"></canvas>
+            </div>
+
+            <div class="stats">
+                <h2>Recent Statistics</h2>
+                <div id="statsContainer" class="stats-container">
+                    <p>Loading statistics...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: energy-mlops
+  labels:
+    name: energy-mlops
+    project: energy-prediction

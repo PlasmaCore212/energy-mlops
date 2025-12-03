@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: energy-prediction-api
+  namespace: energy-mlops
+  labels:
+    app: energy-prediction-api
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 8000
+    nodePort: 30080
+    protocol: TCP
+    name: http
+  selector:
+    app: energy-prediction-api
