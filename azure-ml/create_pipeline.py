@@ -34,19 +34,9 @@ def create_ml_client():
 
 
 def get_environment(ml_client):
-    """Get existing curated environment"""
-    # Use Azure's curated environment instead of creating one
-    env_name = "AzureML-sklearn-1.0-ubuntu20.04-py38-cpu"
-    env_version = "1"
-    
-    try:
-        env = ml_client.environments.get(name=env_name, version=env_version)
-        print(f"✅ Using environment: {env.name}:{env.version}")
-        return env
-    except:
-        # Fallback to latest version
-        print(f"Using curated environment: {env_name}")
-        return f"{env_name}@latest"
+    """Get curated environment"""
+    # Use Microsoft's curated sklearn environment
+    return "azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu@latest"
 
 
 def submit_training_job(ml_client, environment):
