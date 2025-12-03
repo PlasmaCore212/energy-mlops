@@ -1,7 +1,7 @@
-name: Train Model and Deploy
+name: Train Model
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
     inputs:
       cleanup_compute:
         description: 'Delete compute after training?'
@@ -17,7 +17,6 @@ env:
   AZURE_RESOURCE_GROUP: rg-energy-mlops
   AZURE_WORKSPACE_NAME: ml-energy-prediction
   AZURE_COMPUTE_NAME: cpu-cluster
-  ACR_NAME: arcenergy123
   DATASET_NAME: household-power-consumption
   DATASET_VERSION: '1'
 
@@ -26,7 +25,7 @@ jobs:
     name: Train Model in Azure ML
     runs-on: ubuntu-latest
     outputs:
-      job_name: ${{ steps.submit.outputs.job_name }}
+      model_version: ${{ steps.register.outputs.model_version }}
     
     steps:
     - name: Checkout code
@@ -57,7 +56,6 @@ jobs:
         cd azure-ml
         python create_pipeline.py
         
-        # Read job name
         JOB_NAME=$(cat job_name.txt)
         echo "job_name=$JOB_NAME" >> $GITHUB_OUTPUT
         echo "✅ Job submitted: $JOB_NAME"
@@ -67,14 +65,12 @@ jobs:
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         echo "⏳ Waiting for job: $JOB_NAME"
         
-        # Wait for job to complete (max 60 minutes)
         az ml job stream \
           --name $JOB_NAME \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
     
     - name: Check Job Status
-      id: check_status
       run: |
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         
@@ -98,7 +94,6 @@ jobs:
       run: |
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         
-        # Register model
         az ml model create \
           --name energy-consumption-model \
           --version auto \
@@ -107,7 +102,6 @@ jobs:
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
         
-        # Get latest version
         MODEL_VERSION=$(az ml model list \
           --name energy-consumption-model \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
@@ -117,91 +111,40 @@ jobs:
         echo "model_version=$MODEL_VERSION" >> $GITHUB_OUTPUT
         echo "✅ Model registered as version $MODEL_VERSION"
     
-    - name: Download Model
-      run: |
-        MODEL_VERSION="${{ steps.register.outputs.model_version }}"
-        
-        mkdir -p api/model
-        
-        az ml model download \
-          --name energy-consumption-model \
-          --version $MODEL_VERSION \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-          --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
-          --download-path api/model
-        
-        echo "✅ Model downloaded"
-        ls -lh api/model/
-    
-    - name: Cleanup Compute (Optional)
-      if: github.event.inputs.cleanup_compute == 'true'
+    - name: Cleanup Compute
+      if: always() && github.event.inputs.cleanup_compute == 'true'
       run: |
         chmod +x scripts/cleanup_compute.sh
         ./scripts/cleanup_compute.sh
     
-    - name: Upload Model Artifacts
-      uses: actions/upload-artifact@v3
-      with:
-        name: trained-model
-        path: api/model/
-  
-  build-and-push:
-    name: Build and Push Docker Images
+    - name: Training Summary
+      run: |
+        echo "## ✅ Training Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Job**: ${{ steps.submit.outputs.job_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Model Version**: ${{ steps.register.outputs.model_version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Compute Cleaned Up**: ${{ github.event.inputs.cleanup_compute }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🚀 Deploy workflow will start automatically..." >> $GITHUB_STEP_SUMMARY
+
+  trigger-deploy:
+    name: Trigger Deployment
     needs: train-model
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Download Model
-      uses: actions/download-artifact@v3
+    - name: Trigger Deploy Workflow
+      uses: actions/github-script@v6
       with:
-        name: trained-model
-        path: api/model/
-    
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-    
-    - name: Login to ACR
-      run: |
-        az acr login --name ${{ env.ACR_NAME }}
-    
-    - name: Build and Push API Image
-      working-directory: ./api
-      run: |
-        docker build -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest \
-                     -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }} .
-        
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }}
-        
-        echo "✅ API image pushed"
-    
-    - name: Build and Push Web Image
-      working-directory: ./web
-      run: |
-        docker build -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest \
-                     -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }} .
-        
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
-        
-        echo "✅ Web image pushed"
-    
-    - name: Deployment Summary
-      run: |
-        echo "## ✅ Training and Build Complete!" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Model Info:" >> $GITHUB_STEP_SUMMARY
-        echo "- Job: ${{ needs.train-model.outputs.job_name }}" >> $GITHUB_STEP_SUMMARY
-        echo "- Version: Latest" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Docker Images:" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energyapi:latest\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energy-web:latest\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Next Steps:" >> $GITHUB_STEP_SUMMARY
-        echo "Run locally: \`./scripts/deploy_local.sh\`" >> $GITHUB_STEP_SUMMARY
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          await github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            workflow_id: 'deploy.yml',
+            ref: 'main',
+            inputs: {
+              model_version: '${{ needs.train-model.outputs.model_version }}'
+            }
+          });
+          console.log('✅ Deploy workflow triggered');

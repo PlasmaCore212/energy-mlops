@@ -1,0 +1,150 @@
+name: Deploy Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version to deploy'
+        required: true
+        type: string
+  push:
+    branches: [ main ]
+    paths:
+      - 'api/**'
+      - 'web/**'
+      - 'k8s/**'
+      - '.github/workflows/deploy.yml'
+
+env:
+  AZURE_SUBSCRIPTION_ID: 74e84083-a87b-4a82-b1f6-56e4fd7a9031
+  AZURE_RESOURCE_GROUP: rg-energy-mlops
+  AZURE_WORKSPACE_NAME: ml-energy-prediction
+  ACR_NAME: arcenergy123
+
+jobs:
+  download-model:
+    name: Download Model from Azure ML
+    runs-on: ubuntu-latest
+    # Only run if triggered by train workflow OR if model already exists
+    if: github.event.inputs.model_version != '' || github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Download Model
+      run: |
+        # Determine model version
+        if [ -n "${{ github.event.inputs.model_version }}" ]; then
+          MODEL_VERSION="${{ github.event.inputs.model_version }}"
+          echo "Using specified model version: $MODEL_VERSION"
+        else
+          # Get latest version for push events
+          MODEL_VERSION=$(az ml model list \
+            --name energy-consumption-model \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
+            --query "[0].version" -o tsv)
+          echo "Using latest model version: $MODEL_VERSION"
+        fi
+        
+        mkdir -p api/model
+        
+        az ml model download \
+          --name energy-consumption-model \
+          --version $MODEL_VERSION \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
+          --download-path api/model
+        
+        echo "✅ Model v$MODEL_VERSION downloaded"
+        ls -lh api/model/
+    
+    - name: Upload Model Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: trained-model
+        path: api/model/
+        retention-days: 7
+
+  build-and-push:
+    name: Build and Push Docker Images
+    needs: download-model
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Download Model
+      uses: actions/download-artifact@v3
+      with:
+        name: trained-model
+        path: api/model/
+    
+    - name: Verify Model
+      run: |
+        echo "📦 Model files:"
+        ls -lh api/model/
+        
+        if [ ! -f "api/model/model.pkl" ]; then
+          echo "❌ model.pkl not found!"
+          exit 1
+        fi
+        
+        echo "✅ Model verified"
+    
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Login to ACR
+      run: |
+        az acr login --name ${{ env.ACR_NAME }}
+    
+    - name: Build and Push API Image
+      working-directory: ./api
+      run: |
+        docker build \
+          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest \
+          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }} .
+        
+        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest
+        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }}
+        
+        echo "✅ API image pushed"
+    
+    - name: Build and Push Web Image
+      working-directory: ./web
+      run: |
+        docker build \
+          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest \
+          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }} .
+        
+        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest
+        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
+        
+        echo "✅ Web image pushed"
+    
+    - name: Deployment Summary
+      run: |
+        echo "## ✅ Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Images:" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energyapi:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energy-web:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Deploy Locally:" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+        echo "./scripts/deploy_local.sh" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Access:" >> $GITHUB_STEP_SUMMARY
+        echo "- API: http://localhost:30080/docs" >> $GITHUB_STEP_SUMMARY
+        echo "- Web: http://localhost:30081" >> $GITHUB_STEP_SUMMARY
