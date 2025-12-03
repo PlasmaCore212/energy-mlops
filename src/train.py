@@ -3,6 +3,14 @@ Energy Consumption Prediction - XGBoost Training Script
 Trains model on household power consumption data in Azure ML
 """
 
+import subprocess
+import sys
+
+# Install required packages
+print("Installing required packages...")
+subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", 
+                      "xgboost==2.0.2", "mlflow==2.8.0"])
+
 import argparse
 import pandas as pd
 import numpy as np
