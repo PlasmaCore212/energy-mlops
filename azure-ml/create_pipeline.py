@@ -33,18 +33,20 @@ def create_ml_client():
     return ml_client
 
 
-def create_environment(ml_client):
-    """Create training environment"""
-    env = Environment(
-        name="energy-training-env",
-        description="Environment for energy consumption model training",
-        conda_file="../src/conda.yml",
-        image="mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu20.04:latest"
-    )
+def get_environment(ml_client):
+    """Get existing curated environment"""
+    # Use Azure's curated environment instead of creating one
+    env_name = "AzureML-sklearn-1.0-ubuntu20.04-py38-cpu"
+    env_version = "1"
     
-    env = ml_client.environments.create_or_update(env)
-    print(f"✅ Environment: {env.name}:{env.version}")
-    return env
+    try:
+        env = ml_client.environments.get(name=env_name, version=env_version)
+        print(f"✅ Using environment: {env.name}:{env.version}")
+        return env
+    except:
+        # Fallback to latest version
+        print(f"Using curated environment: {env_name}")
+        return f"{env_name}@latest"
 
 
 def submit_training_job(ml_client, environment):
@@ -53,6 +55,12 @@ def submit_training_job(ml_client, environment):
     # Get dataset
     dataset = ml_client.data.get(name=DATASET_NAME, version=DATASET_VERSION)
     print(f"✅ Dataset: {dataset.name} v{dataset.version}")
+    
+    # Determine environment string
+    if isinstance(environment, str):
+        env_str = environment
+    else:
+        env_str = f"{environment.name}:{environment.version}"
     
     # Create job
     job = command(
@@ -64,7 +72,7 @@ def submit_training_job(ml_client, environment):
         outputs={
             "model_output": Output(type="uri_folder")
         },
-        environment=f"{environment.name}:{environment.version}",
+        environment=env_str,
         compute=COMPUTE_NAME,
         experiment_name="energy-consumption-training",
         display_name="Energy XGBoost Training"
@@ -89,7 +97,7 @@ def main():
     """Main execution"""
     try:
         ml_client = create_ml_client()
-        environment = create_environment(ml_client)
+        environment = get_environment(ml_client)
         submitted_job = submit_training_job(ml_client, environment)
         
         print("\n" + "="*50)
