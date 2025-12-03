@@ -1,0 +1,9 @@
+name: azure-ml-pipeline
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip=23.0
+  - pip:
+    - azure-ai-ml==1.11.0
+    - azure-identity==1.15.0
