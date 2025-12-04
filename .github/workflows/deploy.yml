@@ -25,7 +25,6 @@ jobs:
   download-model:
     name: Download Model from Azure ML
     runs-on: ubuntu-latest
-    # Only run if triggered by train workflow OR if model already exists
     if: github.event.inputs.model_version != '' || github.event_name == 'push'
     
     steps:
@@ -39,25 +38,21 @@ jobs:
     
     - name: Download Model
       run: |
-        # Determine model version
         if [ -n "${{ github.event.inputs.model_version }}" ]; then
           MODEL_VERSION="${{ github.event.inputs.model_version }}"
           echo "Using specified model version: $MODEL_VERSION"
           
-          # Validate it's a positive integer
           if ! [[ "$MODEL_VERSION" =~ ^[0-9]+$ ]]; then
             echo "❌ Invalid model version: '$MODEL_VERSION' (must be a positive integer)"
             exit 1
           fi
         else
-          # Get latest version for push events
           MODEL_VERSION=$(az ml model list \
             --name energy-consumption-model \
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
             --query "[0].version" -o tsv)
           
-          # Validate version
           if [ -z "$MODEL_VERSION" ] || [ "$MODEL_VERSION" = "null" ]; then
             echo "❌ No models found in registry"
             exit 1
@@ -150,6 +145,54 @@ jobs:
         docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
         
         echo "✅ Web image pushed"
+
+  deploy-to-kubernetes:
+    name: Deploy to Local Kubernetes
+    needs: build-and-push
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Deploy to Kubernetes
+      run: |
+        $ACR_NAME = "${{ env.ACR_NAME }}"
+        
+        # Get ACR credentials
+        $ACR_USERNAME = az acr credential show --name $ACR_NAME --query username -o tsv
+        $ACR_PASSWORD = az acr credential show --name $ACR_NAME --query "passwords[0].value" -o tsv
+        
+        # Apply namespace
+        kubectl apply -f k8s/namespace.yaml
+        
+        # Create/update ACR secret
+        kubectl create secret docker-registry acr-secret `
+          --namespace energy-mlops `
+          --docker-server="${ACR_NAME}.azurecr.io" `
+          --docker-username=$ACR_USERNAME `
+          --docker-password=$ACR_PASSWORD `
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        # Deploy all resources
+        kubectl apply -f k8s/
+        
+        # Wait for rollout
+        kubectl rollout status deployment/energy-prediction-api -n energy-mlops --timeout=300s
+        kubectl rollout status deployment/energy-web -n energy-mlops --timeout=300s
+      shell: pwsh
+    
+    - name: Deployment Status
+      run: |
+        Write-Host "`n✅ DEPLOYMENT COMPLETE!`n"
+        
+        kubectl get pods -n energy-mlops
+        kubectl get svc -n energy-mlops
+        
+        Write-Host "`n🔗 Access:"
+        Write-Host "  API:  http://localhost:30080/docs"
+        Write-Host "  Web:  http://localhost:30081"
+      shell: pwsh
     
     - name: Deployment Summary
       run: |
@@ -158,11 +201,6 @@ jobs:
         echo "### Docker Images:" >> $GITHUB_STEP_SUMMARY
         echo "- \`${{ env.ACR_NAME }}.azurecr.io/energyapi:latest\`" >> $GITHUB_STEP_SUMMARY
         echo "- \`${{ env.ACR_NAME }}.azurecr.io/energy-web:latest\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Deploy Locally:" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-        echo "./scripts/deploy_local.sh" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Access:" >> $GITHUB_STEP_SUMMARY
         echo "- API: http://localhost:30080/docs" >> $GITHUB_STEP_SUMMARY

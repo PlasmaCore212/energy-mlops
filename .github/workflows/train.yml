@@ -11,6 +11,18 @@ on:
         options:
           - 'true'
           - 'false'
+      force_retrain:
+        description: 'Force retrain even if model exists?'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: read
+  actions: write
 
 env:
   AZURE_SUBSCRIPTION_ID: 74e84083-a87b-4a82-b1f6-56e4fd7a9031
@@ -21,8 +33,51 @@ env:
   DATASET_VERSION: '1'
 
 jobs:
+  check-model:
+    name: Check for Existing Model
+    runs-on: ubuntu-latest
+    outputs:
+      model_exists: ${{ steps.check.outputs.exists }}
+      model_version: ${{ steps.check.outputs.version }}
+      should_train: ${{ steps.check.outputs.should_train }}
+    
+    steps:
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Check Model Registry
+      id: check
+      run: |
+        MODEL_VERSION=$(az ml model list \
+          --name energy-consumption-model \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
+          --query "[0].version" -o tsv 2>/dev/null || echo "")
+        
+        if [ -n "$MODEL_VERSION" ] && [ "$MODEL_VERSION" != "null" ]; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "version=$MODEL_VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Found existing model version: $MODEL_VERSION"
+          
+          if [ "${{ github.event.inputs.force_retrain }}" = "true" ]; then
+            echo "should_train=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Force retrain enabled"
+          else
+            echo "should_train=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Skipping training, using existing model"
+          fi
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "should_train=true" >> $GITHUB_OUTPUT
+          echo "⚠️ No model found, training required"
+        fi
+
   train-model:
     name: Train Model in Azure ML
+    needs: check-model
+    if: needs.check-model.outputs.should_train == 'true'
     runs-on: ubuntu-latest
     outputs:
       model_version: ${{ steps.register.outputs.model_version }}
@@ -95,14 +150,12 @@ jobs:
       run: |
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         
-        # Get the next version number
         LATEST_VERSION=$(az ml model list \
           --name energy-consumption-model \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
           --query "[0].version" -o tsv 2>/dev/null || echo "0")
         
-        # If no models exist or query fails, start at version 1
         if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
           NEXT_VERSION=1
         else
@@ -118,7 +171,6 @@ jobs:
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
         
-        # Validate version
         if ! [[ "$NEXT_VERSION" =~ ^[0-9]+$ ]]; then
           echo "❌ Invalid model version: '$NEXT_VERSION'"
           exit 1
@@ -145,10 +197,20 @@ jobs:
 
   trigger-deploy:
     name: Trigger Deployment
-    needs: train-model
+    needs: [check-model, train-model]
+    if: always() && (needs.train-model.result == 'success' || (needs.check-model.outputs.model_exists == 'true' && needs.check-model.outputs.should_train == 'false'))
     runs-on: ubuntu-latest
     
     steps:
+    - name: Determine Model Version
+      id: version
+      run: |
+        if [ "${{ needs.train-model.result }}" = "success" ]; then
+          echo "version=${{ needs.train-model.outputs.model_version }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${{ needs.check-model.outputs.model_version }}" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Trigger Deploy Workflow
       uses: actions/github-script@v6
       with:
@@ -160,7 +222,7 @@ jobs:
             workflow_id: 'deploy.yml',
             ref: 'main',
             inputs: {
-              model_version: '${{ needs.train-model.outputs.model_version }}'
+              model_version: '${{ steps.version.outputs.version }}'
             }
           });
-          console.log('✅ Deploy workflow triggered with model version: ${{ needs.train-model.outputs.model_version }}');
+          console.log('✅ Deploy workflow triggered with model version: ${{ steps.version.outputs.version }}');
