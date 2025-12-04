@@ -43,6 +43,12 @@ jobs:
         if [ -n "${{ github.event.inputs.model_version }}" ]; then
           MODEL_VERSION="${{ github.event.inputs.model_version }}"
           echo "Using specified model version: $MODEL_VERSION"
+          
+          # Validate it's a positive integer
+          if ! [[ "$MODEL_VERSION" =~ ^[0-9]+$ ]]; then
+            echo "❌ Invalid model version: '$MODEL_VERSION' (must be a positive integer)"
+            exit 1
+          fi
         else
           # Get latest version for push events
           MODEL_VERSION=$(az ml model list \
@@ -50,11 +56,24 @@ jobs:
             --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
             --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
             --query "[0].version" -o tsv)
+          
+          # Validate version
+          if [ -z "$MODEL_VERSION" ] || [ "$MODEL_VERSION" = "null" ]; then
+            echo "❌ No models found in registry"
+            exit 1
+          fi
+          
+          if ! [[ "$MODEL_VERSION" =~ ^[0-9]+$ ]]; then
+            echo "❌ Invalid model version retrieved: '$MODEL_VERSION'"
+            exit 1
+          fi
+          
           echo "Using latest model version: $MODEL_VERSION"
         fi
         
         mkdir -p api/model
         
+        echo "Downloading model version $MODEL_VERSION..."
         az ml model download \
           --name energy-consumption-model \
           --version $MODEL_VERSION \

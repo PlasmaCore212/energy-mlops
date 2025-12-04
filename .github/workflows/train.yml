@@ -95,6 +95,8 @@ jobs:
       run: |
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         
+        # Register model and capture the version directly from creation
+        echo "Registering model..."
         az ml model create \
           --name energy-consumption-model \
           --version auto \
@@ -103,11 +105,26 @@ jobs:
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
         
+        # Wait for registration to complete
+        sleep 5
+        
+        # Get the latest version
         MODEL_VERSION=$(az ml model list \
           --name energy-consumption-model \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
           --query "[0].version" -o tsv)
+        
+        # Validate version is a positive integer
+        if ! [[ "$MODEL_VERSION" =~ ^[0-9]+$ ]]; then
+          echo "❌ Invalid model version retrieved: '$MODEL_VERSION'"
+          echo "Attempting to list all models..."
+          az ml model list \
+            --name energy-consumption-model \
+            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+            --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
+          exit 1
+        fi
         
         echo "model_version=$MODEL_VERSION" >> $GITHUB_OUTPUT
         echo "✅ Model registered as version $MODEL_VERSION"
@@ -148,4 +165,4 @@ jobs:
               model_version: '${{ needs.train-model.outputs.model_version }}'
             }
           });
-          console.log('✅ Deploy workflow triggered');
+          console.log('✅ Deploy workflow triggered with model version: ${{ needs.train-model.outputs.model_version }}');
