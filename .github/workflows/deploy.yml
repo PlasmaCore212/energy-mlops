@@ -19,7 +19,7 @@ env:
   AZURE_SUBSCRIPTION_ID: 74e84083-a87b-4a82-b1f6-56e4fd7a9031
   AZURE_RESOURCE_GROUP: rg-energy-mlops
   AZURE_WORKSPACE_NAME: ml-energy-prediction
-  ACR_NAME: arcenergy123
+  ACR_NAME: arcenergy123-bgaycrdwf4gecpfv
 
 jobs:
   download-model:
@@ -96,7 +96,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Images
     needs: download-model
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     steps:
     - name: Checkout code
