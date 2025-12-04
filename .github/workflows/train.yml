@@ -95,39 +95,37 @@ jobs:
       run: |
         JOB_NAME="${{ steps.submit.outputs.job_name }}"
         
-        # Register model and capture the version directly from creation
-        echo "Registering model..."
+        # Get the next version number
+        LATEST_VERSION=$(az ml model list \
+          --name energy-consumption-model \
+          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
+          --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
+          --query "[0].version" -o tsv 2>/dev/null || echo "0")
+        
+        # If no models exist or query fails, start at version 1
+        if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+          NEXT_VERSION=1
+        else
+          NEXT_VERSION=$((LATEST_VERSION + 1))
+        fi
+        
+        echo "Registering model as version $NEXT_VERSION..."
         az ml model create \
           --name energy-consumption-model \
-          --version auto \
+          --version $NEXT_VERSION \
           --path "azureml://jobs/$JOB_NAME/outputs/model_output" \
           --type custom_model \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
         
-        # Wait for registration to complete
-        sleep 5
-        
-        # Get the latest version
-        MODEL_VERSION=$(az ml model list \
-          --name energy-consumption-model \
-          --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-          --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
-          --query "[0].version" -o tsv)
-        
-        # Validate version is a positive integer
-        if ! [[ "$MODEL_VERSION" =~ ^[0-9]+$ ]]; then
-          echo "❌ Invalid model version retrieved: '$MODEL_VERSION'"
-          echo "Attempting to list all models..."
-          az ml model list \
-            --name energy-consumption-model \
-            --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
-            --workspace-name ${{ env.AZURE_WORKSPACE_NAME }}
+        # Validate version
+        if ! [[ "$NEXT_VERSION" =~ ^[0-9]+$ ]]; then
+          echo "❌ Invalid model version: '$NEXT_VERSION'"
           exit 1
         fi
         
-        echo "model_version=$MODEL_VERSION" >> $GITHUB_OUTPUT
-        echo "✅ Model registered as version $MODEL_VERSION"
+        echo "model_version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+        echo "✅ Model registered as version $NEXT_VERSION"
     
     - name: Cleanup Compute
       if: always() && github.event.inputs.cleanup_compute == 'true'
