@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: api
-        image: acrenergyprediction.azurecr.io/energyapi:latest
+        image: arcenergy123.azurecr.io/energyapi:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
