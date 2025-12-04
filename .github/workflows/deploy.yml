@@ -127,10 +127,8 @@ jobs:
     
     - name: Login to ACR
       run: |
-        ACR_USERNAME=$(az acr credential show --name ${{ env.ACR_NAME }} --query username -o tsv)
-        ACR_PASSWORD=$(az acr credential show --name ${{ env.ACR_NAME }} --query "passwords[0].value" -o tsv)
-        echo $ACR_PASSWORD | docker login ${{ env.ACR_NAME }}.azurecr.io --username $ACR_USERNAME --password-stdin
-        
+        az acr login --name ${{ env.ACR_NAME }}
+    
     - name: Build and Push API Image
       working-directory: ./api
       run: |
