@@ -76,6 +76,13 @@ jobs:
           --workspace-name ${{ env.AZURE_WORKSPACE_NAME }} \
           --download-path api/model
         
+        # Move files from subdirectory to expected location
+        echo "Reorganizing model files..."
+        if [ -d "api/model/energy-consumption-model/model_output" ]; then
+          mv api/model/energy-consumption-model/model_output/* api/model/
+          rm -rf api/model/energy-consumption-model
+        fi
+        
         echo "✅ Model v$MODEL_VERSION downloaded"
         ls -lh api/model/
     
