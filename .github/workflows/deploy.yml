@@ -110,15 +110,16 @@ jobs:
     
     - name: Verify Model
       run: |
-        echo "📦 Model files:"
-        ls -lh api/model/
+        Write-Host "Model files:"
+        Get-ChildItem api/model/
         
-        if [ ! -f "api/model/model.pkl" ]; then
-          echo "❌ model.pkl not found!"
+        if (-not (Test-Path "api/model/model.pkl")) {
+          Write-Host "ERROR: model.pkl not found!"
           exit 1
-        fi
+        }
         
-        echo "✅ Model verified"
+        Write-Host "Model verified successfully"
+      shell: pwsh
     
     - name: Azure Login
       uses: azure/login@v1
@@ -132,26 +133,28 @@ jobs:
     - name: Build and Push API Image
       working-directory: ./api
       run: |
-        docker build \
-          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest \
+        docker build `
+          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest `
           -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }} .
         
         docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest
         docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }}
         
-        echo "✅ API image pushed"
+        Write-Host "API image pushed successfully"
+      shell: pwsh
     
     - name: Build and Push Web Image
       working-directory: ./web
       run: |
-        docker build \
-          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest \
+        docker build `
+          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest `
           -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }} .
         
         docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest
         docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
         
-        echo "✅ Web image pushed"
+        Write-Host "Web image pushed successfully"
+      shell: pwsh
 
   deploy-to-kubernetes:
     name: Deploy to Local Kubernetes
