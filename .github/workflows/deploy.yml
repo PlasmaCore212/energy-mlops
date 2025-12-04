@@ -19,7 +19,8 @@ env:
   AZURE_SUBSCRIPTION_ID: 74e84083-a87b-4a82-b1f6-56e4fd7a9031
   AZURE_RESOURCE_GROUP: rg-energy-mlops
   AZURE_WORKSPACE_NAME: ml-energy-prediction
-  ACR_NAME: arcenergy123-bgaycrdwf4gecpfv
+  ACR_NAME: arcenergy123
+  ACR_LOGIN_SERVER: arcenergy123-bgaycrdwf4gecpfv.azurecr.io
 
 jobs:
   download-model:
@@ -128,17 +129,18 @@ jobs:
     
     - name: Login to ACR
       run: |
-        az acr login --name ${{ env.ACR_NAME }}
+        az acr login --name arcenergy123
+      shell: powershell
     
     - name: Build and Push API Image
       working-directory: ./api
       run: |
         docker build `
-          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest `
-          -t ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }} .
+          -t ${{ env.ACR_LOGIN_SERVER }}/energyapi:latest `
+          -t ${{ env.ACR_LOGIN_SERVER }}/energyapi:${{ github.sha }} .
         
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:latest
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }}
+        docker push ${{ env.ACR_LOGIN_SERVER }}/energyapi:latest
+        docker push ${{ env.ACR_LOGIN_SERVER }}/energyapi:${{ github.sha }}
         
         Write-Host "API image pushed successfully"
       shell: powershell
@@ -147,11 +149,11 @@ jobs:
       working-directory: ./web
       run: |
         docker build `
-          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest `
-          -t ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }} .
+          -t ${{ env.ACR_LOGIN_SERVER }}/energy-web:latest `
+          -t ${{ env.ACR_LOGIN_SERVER }}/energy-web:${{ github.sha }} .
         
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:latest
-        docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
+        docker push ${{ env.ACR_LOGIN_SERVER }}/energy-web:latest
+        docker push ${{ env.ACR_LOGIN_SERVER }}/energy-web:${{ github.sha }}
         
         Write-Host "Web image pushed successfully"
       shell: powershell
@@ -168,6 +170,7 @@ jobs:
     - name: Deploy to Kubernetes
       run: |
         $ACR_NAME = "${{ env.ACR_NAME }}"
+        $ACR_LOGIN_SERVER = "${{ env.ACR_LOGIN_SERVER }}"
         
         # Get ACR credentials
         $ACR_USERNAME = az acr credential show --name $ACR_NAME --query username -o tsv
@@ -179,7 +182,7 @@ jobs:
         # Create/update ACR secret
         kubectl create secret docker-registry acr-secret `
           --namespace energy-mlops `
-          --docker-server="${ACR_NAME}.azurecr.io" `
+          --docker-server="$ACR_LOGIN_SERVER" `
           --docker-username=$ACR_USERNAME `
           --docker-password=$ACR_PASSWORD `
           --dry-run=client -o yaml | kubectl apply -f -
@@ -206,11 +209,11 @@ jobs:
     
     - name: Deployment Summary
       run: |
-        echo "## ✅ Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "## Deployment Complete!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Docker Images:" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energyapi:latest\`" >> $GITHUB_STEP_SUMMARY
-        echo "- \`${{ env.ACR_NAME }}.azurecr.io/energy-web:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.ACR_LOGIN_SERVER }}/energyapi:latest\`" >> $GITHUB_STEP_SUMMARY
+        echo "- \`${{ env.ACR_LOGIN_SERVER }}/energy-web:latest\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Access:" >> $GITHUB_STEP_SUMMARY
         echo "- API: http://localhost:30080/docs" >> $GITHUB_STEP_SUMMARY
