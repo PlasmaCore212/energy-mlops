@@ -119,7 +119,7 @@ jobs:
         }
         
         Write-Host "Model verified successfully"
-      shell: pwsh
+      shell: powershell
     
     - name: Azure Login
       uses: azure/login@v1
@@ -141,7 +141,7 @@ jobs:
         docker push ${{ env.ACR_NAME }}.azurecr.io/energyapi:${{ github.sha }}
         
         Write-Host "API image pushed successfully"
-      shell: pwsh
+      shell: powershell
     
     - name: Build and Push Web Image
       working-directory: ./web
@@ -154,7 +154,7 @@ jobs:
         docker push ${{ env.ACR_NAME }}.azurecr.io/energy-web:${{ github.sha }}
         
         Write-Host "Web image pushed successfully"
-      shell: pwsh
+      shell: powershell
 
   deploy-to-kubernetes:
     name: Deploy to Local Kubernetes
@@ -190,19 +190,19 @@ jobs:
         # Wait for rollout
         kubectl rollout status deployment/energy-prediction-api -n energy-mlops --timeout=300s
         kubectl rollout status deployment/energy-web -n energy-mlops --timeout=300s
-      shell: pwsh
+      shell: powershell
     
     - name: Deployment Status
       run: |
-        Write-Host "`n✅ DEPLOYMENT COMPLETE!`n"
+        Write-Host "`nDEPLOYMENT COMPLETE!`n"
         
         kubectl get pods -n energy-mlops
         kubectl get svc -n energy-mlops
         
-        Write-Host "`n🔗 Access:"
+        Write-Host "`nAccess:"
         Write-Host "  API:  http://localhost:30080/docs"
         Write-Host "  Web:  http://localhost:30081"
-      shell: pwsh
+      shell: powershell
     
     - name: Deployment Summary
       run: |
