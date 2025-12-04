@@ -1,6 +1,11 @@
 name: Train Model
 
 on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'azure-ml/**'
   workflow_dispatch:
     inputs:
       cleanup_compute:
