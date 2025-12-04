@@ -169,6 +169,12 @@ jobs:
     
     - name: Deploy to Kubernetes
       run: |
+        # Login to Azure in PowerShell session
+        az login --service-principal `
+          -u $env:AZURE_CLIENT_ID `
+          -p $env:AZURE_CLIENT_SECRET `
+          --tenant $env:AZURE_TENANT_ID
+        
         $ACR_NAME = "${{ env.ACR_NAME }}"
         $ACR_LOGIN_SERVER = "${{ env.ACR_LOGIN_SERVER }}"
         
@@ -179,13 +185,15 @@ jobs:
         # Apply namespace
         kubectl apply -f k8s/namespace.yaml
         
-        # Create/update ACR secret
+        # Delete existing secret if exists
+        kubectl delete secret acr-secret -n energy-mlops --ignore-not-found
+        
+        # Create ACR secret
         kubectl create secret docker-registry acr-secret `
           --namespace energy-mlops `
           --docker-server="$ACR_LOGIN_SERVER" `
           --docker-username=$ACR_USERNAME `
-          --docker-password=$ACR_PASSWORD `
-          --dry-run=client -o yaml | kubectl apply -f -
+          --docker-password=$ACR_PASSWORD
         
         # Deploy all resources
         kubectl apply -f k8s/
@@ -194,6 +202,10 @@ jobs:
         kubectl rollout status deployment/energy-prediction-api -n energy-mlops --timeout=300s
         kubectl rollout status deployment/energy-web -n energy-mlops --timeout=300s
       shell: powershell
+      env:
+        AZURE_CLIENT_ID: ${{ fromJSON(secrets.AZURE_CREDENTIALS).clientId }}
+        AZURE_CLIENT_SECRET: ${{ fromJSON(secrets.AZURE_CREDENTIALS).clientSecret }}
+        AZURE_TENANT_ID: ${{ fromJSON(secrets.AZURE_CREDENTIALS).tenantId }}
     
     - name: Deployment Status
       run: |
