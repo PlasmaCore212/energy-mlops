@@ -44,7 +44,6 @@ Thumbs.db
 # Data
 data/
 *.csv
-*.txt
 *.zip
 
 # Model files
